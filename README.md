@@ -1,7 +1,6 @@
 # 🧠 MoodMate
 ### Your Agentic AI Companion for Mental Resilience
 
-![Profile Views](https://komarev.com/ghpvc/?username=GauthamSalian&color=blue&style=flat-square&label=PROFILE+VIEWS)
 
 [![Hackathon Winner](https://img.shields.io/badge/🏆_Winner-2nd_Place_@_MindScape_2025-FFD700?style=for-the-badge)](https://github.com/GauthamSalian/MoodMate---An-AI-Mental-Wellness-Companion)
 [![Tech Stack](https://img.shields.io/badge/Stack-React_|_FastAPI_|_AWS-blue?style=for-the-badge)](https://github.com/GauthamSalian/MoodMate---An-AI-Mental-Wellness-Companion)
