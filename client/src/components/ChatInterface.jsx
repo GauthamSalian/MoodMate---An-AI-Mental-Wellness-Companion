@@ -3,7 +3,7 @@ import botAvatar from "../assets/bot-avatar.png";
 import userAvatar from "../assets/user-avatar.png";
 import FaceDetector from "../components/FaceDetector";
 
-const API_URL = "http://localhost:8005/chat";
+const API_URL = "http://localhost:8001/chat";
 
 function ChatInterface() {
   const [messages, setMessages] = useState([]);

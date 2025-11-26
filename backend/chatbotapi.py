@@ -10,11 +10,12 @@ from datetime import datetime
 load_dotenv()
 router = APIRouter()
 
-# CORS setup
+# CORS setup (Configure this appropriately for your frontend)
 
 # DynamoDB setup
 dynamodb = boto3.resource("dynamodb", region_name="ap-south-1")
-emotion_table = dynamodb.Table("UserEmotionLogs")  # Optional table for emotion history
+emotion_table = dynamodb.Table("UserEmotionLogs") # Optional table for emotion history
+habit_table = dynamodb.Table("HabitFlowProgress") # Ensure this table is defined
 
 # Base prompt
 BASE_PROMPT = """
@@ -34,22 +35,26 @@ class Message(BaseModel):
 
 def get_uncompleted_habits_today(user_id: str):
     today = datetime.utcnow().date().isoformat()
-    habit_table = dynamodb.Table("HabitFlowProgress")
     pending_habits = []
 
-    response = habit_table.scan()
-    for item in response.get("Items", []):
-        if item.get("user_id") == user_id and item.get("is_active", False):
-            last_completed = item.get("last_completed", "")
-            if last_completed != today:
-                pending_habits.append(item)
+    try:
+        response = habit_table.scan()
+        for item in response.get("Items", []):
+            if item.get("user_id") == user_id and item.get("is_active", False):
+                last_completed = item.get("last_completed", "")
+                if last_completed != today:
+                    pending_habits.append(item)
 
-                # Update last_completed so we don’t remind again today
-                habit_table.update_item(
-                    Key={"user_id": item["user_id"], "habit_id": item["habit_id"]},
-                    UpdateExpression="SET last_completed = :today",
-                    ExpressionAttributeValues={":today": today}
-                )
+                    # Update last_completed so we don’t remind again today
+                    # This logic updates the DB as soon as we fetch habits for reminder?
+                    # Usually you update 'last_reminder_sent', but keeping your logic:
+                    habit_table.update_item(
+                        Key={"user_id": item["user_id"], "habit_id": item["habit_id"]},
+                        UpdateExpression="SET last_completed = :today",
+                        ExpressionAttributeValues={":today": today}
+                    )
+    except Exception as e:
+        print(f"⚠️ Error fetching habits: {e}")
 
     return pending_habits
 
@@ -67,13 +72,16 @@ async def chat(message: Message, request: Request):
 
     # ✅ Emotion log (optional)
     if emotion or stress is not None:
-        emotion_table.put_item(Item={
-            "user_id": user_id,
-            "timestamp": datetime.utcnow().isoformat(),
-            "emotion": emotion or "unknown",
-            "stress": stress or 0.5,
-            "message": user_input
-        })
+        try:
+            emotion_table.put_item(Item={
+                "user_id": user_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "emotion": emotion or "unknown",
+                "stress": stress or 0.5,
+                "message": user_input
+            })
+        except Exception as e:
+            print(f"⚠️ Error logging emotion: {e}")
 
     # ✅ Habit encouragement flow (when not triggered by risky tweet)
     if not risky_tweet_text:
@@ -103,25 +111,57 @@ async def chat(message: Message, request: Request):
     elif emotion in ["sad", "angry", "fearful"]:
         emotion_context += f"The user feels {emotion}. Be affirming and avoid advice overload.\n"
 
+    # Construct the full prompt for the RAG model
+    # Note: The RAG server on Colab expects 'query' in the JSON body
     full_prompt = f"{BASE_PROMPT.strip()}\n\n{emotion_context}User: {user_input or risky_tweet_text}"
 
-    # 💬 Make request to RAG server
+    # 💬 Make request to RAG server (running on Google Colab via Ngrok)
+    # IMPORTANT: Update this URL every time you restart the Colab runtime
+    # Make sure NOT to include a trailing slash (e.g., NO "/" at the end)
+    COLAB_NGROK_URL = "https://braydon-unjudgable-lelia.ngrok-free.dev" 
+    
+    # Remove trailing slash if accidentally added
+    if COLAB_NGROK_URL.endswith("/"):
+        COLAB_NGROK_URL = COLAB_NGROK_URL[:-1]
+
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post("http://65.1.110.82:8000/query", json={"query": full_prompt}, timeout=60.0)
+            # Trying '/query' first (Standard for RAG servers)
+            target_url = f"{COLAB_NGROK_URL}/query"
+            
+            print(f"🚀 Sending request to: {target_url}")
+            
+            response = await client.post(
+                target_url, 
+                json={"query": full_prompt}, 
+                timeout=90.0  # Generous timeout for RAG + Generation
+            )
+            
+            # Fallback: If /query fails with 404, try /chat (older server versions)
+            if response.status_code == 404:
+                print("⚠️ /query not found, trying /chat endpoint...")
+                target_url = f"{COLAB_NGROK_URL}/chat"
+                response = await client.post(
+                    target_url, 
+                    json={"question": full_prompt}, # Note: /chat usually expects 'question', not 'query'
+                    timeout=90.0
+                )
+
             if response.status_code != 200:
-                print("❌ AWS RAG Error:", response.text)
+                print(f"❌ RAG Server Error ({response.status_code}):", response.text)
                 return {
-                    "response": "😔 I’m having trouble reaching the support system right now, but I’m still here for you. Want to try a simple breathing exercise together?"
+                    "response": "😔 I’m having trouble reaching my thought center right now, but I’m still here for you. Want to try a simple breathing exercise together?"
                 }
+            
             data = response.json()
+            # The Colab server returns {"answer": "..."} or {"response": "..."}
             reply = data.get("answer") or data.get("response") or "🤖 No valid response generated."
             return {"response": reply.strip()}
+
     except Exception as e:
         import traceback
         print("🔥 Exception in /chat:", str(e))
         traceback.print_exc()
         return {
-            "response": "🚨 Internal server error. You're not alone—I’m still right here. Let’s take it slow. Want a grounding tip?"
+            "response": "🚨 Connection error. You're not alone—I’m still right here. Let’s take it slow. Want a grounding tip?"
         }
-
