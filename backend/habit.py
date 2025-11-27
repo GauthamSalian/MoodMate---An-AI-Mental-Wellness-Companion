@@ -13,6 +13,7 @@ from uuid import uuid4
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
+import json
 
 
 class HabitProgressInput(BaseModel):
@@ -46,8 +47,8 @@ credentials = Credentials(
 )
 client = APIClient(credentials)
 
-guardian_model = ModelInference(
-    model_id="ibm/granite-3-3-8b-instruct",  # ⚠️ A supported model with long-term viability
+mistral_model = ModelInference(
+    model_id="mistralai/mistral-medium-2505",  # ⚠️ A supported model with long-term viability
     credentials=credentials,
     project_id="1cb8c38f-d650-41fe-9836-86659006c090",
     params={"decoding_method": "greedy", "max_new_tokens": 100}
@@ -60,14 +61,29 @@ class HabitInput(BaseModel):
 def suggest_replacements(data: HabitInput):
     try:
         prompt = (
-            f"Suggest 3 healthy replacement habits for the bad habit: \"{data.bad_habit}\".\n"
-            "Make each suggestion concise (max 5 words) and list them as bullet points."
-        )
+        f"Suggest 3 healthy replacement habits for the bad habit: \"{data.bad_habit}\".\n"
+        "Make each suggestion concise (max 5 words).\n"
+        "Output the response as a JSON object with a single key 'suggestions' which contains a list of 3 strings."
+    )
 
-        response = guardian_model.generate(prompt)
+        response = mistral_model.generate(prompt)
+        print(response)
         raw = response["results"][0]["generated_text"]
 
-        suggestions = [line.strip("-•* ").strip() for line in raw.split("\n") if line.strip()]
+        start_index = raw.find('{')
+        end_index = raw.rfind('}')
+
+        if start_index != -1 and end_index != -1:
+        # Extract the pure JSON substring
+            clean_json_text = raw[start_index : end_index + 1]
+        else:
+        # If brackets aren't found, try to strip markdown fences if they exist
+            clean_json_text = raw.replace("```json", "").replace("```", "").strip()
+        
+        data = json.loads(clean_json_text)
+
+
+        suggestions = data.get("suggestions", [])
         return {"suggestions": suggestions[:3]}
     except Exception as e:
         print("🧨 Granite LLM Error:", str(e))
