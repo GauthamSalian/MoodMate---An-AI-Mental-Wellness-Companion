@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from chatbotapi import router as chatbot_router
-from loginauth import router as auth_router
-from signupauth import router as signup_router
-from analyzetweets import router as analyze_router
-from googlefit import router as googlefit_router
-from habit import router as habit_router
+from backend.chatbotapi import router as chatbot_router
+from backend.loginauth import router as auth_router
+from backend.signupauth import router as signup_router
+from backend.analyzetweets import router as analyze_router
+from backend.googlefit import router as googlefit_router
+from backend.habit import router as habit_router
+from backend.journal import router as journal_router
 
 app = FastAPI()
 
@@ -24,3 +25,4 @@ app.include_router(signup_router)
 app.include_router(analyze_router)
 app.include_router(googlefit_router)
 app.include_router(habit_router)
+app.include_router(journal_router)

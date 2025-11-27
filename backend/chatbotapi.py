@@ -118,7 +118,7 @@ async def chat(message: Message, request: Request):
     # 💬 Make request to RAG server (running on Google Colab via Ngrok)
     # IMPORTANT: Update this URL every time you restart the Colab runtime
     # Make sure NOT to include a trailing slash (e.g., NO "/" at the end)
-    COLAB_NGROK_URL = "https://braydon-unjudgable-lelia.ngrok-free.dev" 
+    COLAB_NGROK_URL = "https://braydon-unjudgable-lelia.ngrok-free.dev/" 
     
     # Remove trailing slash if accidentally added
     if COLAB_NGROK_URL.endswith("/"):

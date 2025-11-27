@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
@@ -108,15 +108,7 @@ HEADERS = {
 
 # Initialize DB and app
 models.Base.metadata.create_all(bind=engine)
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+router = APIRouter()
 
 # Pydantic models
 class AllEmotionScore(BaseModel):
@@ -194,7 +186,7 @@ def analyze_emotions(text: str):
     return dominant_emotion, dominant_score, all_emotions, word_emotions
 
 # Routes
-@app.post("/journal-entry", response_model=JournalEntryResponse)
+@router.post("/journal-entry", response_model=JournalEntryResponse)
 def create_journal_entry(entry: JournalRequest, db: Session = Depends(get_db)):
     existing = db.query(models.JournalEntry).filter(models.JournalEntry.date == entry.date).first()
     if existing:
@@ -257,7 +249,7 @@ def create_journal_entry(entry: JournalRequest, db: Session = Depends(get_db)):
     }
 
 
-@app.put("/journal-entry/{entry_id}", response_model=JournalEntryResponse)
+@router.put("/journal-entry/{entry_id}", response_model=JournalEntryResponse)
 def update_journal_entry(entry_id: str, request: JournalEditRequest, db: Session = Depends(get_db)):
     journal = db.query(models.JournalEntry).filter(models.JournalEntry.id == entry_id).first()
     if not journal:
@@ -303,7 +295,7 @@ def update_journal_entry(entry_id: str, request: JournalEditRequest, db: Session
         "word_emotions": word_emotions_data
     }
 
-@app.get("/journal-entry/by-date", response_model=JournalEntryResponse)
+@router.get("/journal-entry/by-date", response_model=JournalEntryResponse)
 def get_journal_by_date(date_str: str = Query(...), db: Session = Depends(get_db)):
     try:
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -327,7 +319,7 @@ def get_journal_by_date(date_str: str = Query(...), db: Session = Depends(get_db
         ]
     }
 
-@app.get("/journal-entries", response_model=List[JournalEntryResponse])
+@router.get("/journal-entries", response_model=List[JournalEntryResponse])
 def get_all_journals(db: Session = Depends(get_db)):
     journals = db.query(models.JournalEntry).all()
     response = []

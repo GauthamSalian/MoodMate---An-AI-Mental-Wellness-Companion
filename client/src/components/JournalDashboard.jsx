@@ -33,7 +33,7 @@ const JournalDashboard = () => {
   const prompt = "How was your day? What emotions stood out?";
 
   useEffect(() => {
-    fetch("http://localhost:8003/journal-entries")
+    fetch("http://localhost:8001/journal-entries")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -53,8 +53,8 @@ const JournalDashboard = () => {
     const formattedDate = selectedDate.toISOString().split("T")[0];
     const method = isEditing ? "PUT" : "POST";
     const url = isEditing
-      ? `http://localhost:8003/journal-entry/${entryId}`
-      : "http://localhost:8003/journal-entry";
+      ? `http://localhost:8001/journal-entry/${entryId}`
+      : "http://localhost:8001/journal-entry";
 
     const response = await fetch(url, {
       method,
@@ -196,7 +196,7 @@ const JournalDashboard = () => {
     console.log("Fetching for date:", formattedDate);
     setSelectedDate(date);
     try {
-      const res = await fetch(`http://localhost:8003/journal-entry/by-date?date_str=${formattedDate}`);
+      const res = await fetch(`http://localhost:8001/journal-entry/by-date?date_str=${formattedDate}`);
 
       if (!res.ok) {
         // No entry for this date
