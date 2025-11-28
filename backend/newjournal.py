@@ -127,15 +127,27 @@ def analyze_journal_entry(entry):
         }
 ######################################################
 
+#####SAVE TO DYNAMODB###############################
+def save_journal_entry(item: dict):
+    item["user_id"] = FIXED_USER_ID
+    item["entry_id"] = str(uuid4())
+    item["timestamp_utc"] = datetime.datetime.utcnow().isoformat()
+    try:
+        dynamo_table.put_item(Item=item)
+        print("Journal entry saved successfully.")
+    except Exception as e:
+        print("Error saving journal entry:", e)
+###################################################
+
 #Base Models#######################################
-class Input(BaseModel):
+class JournalEntry(BaseModel):
     text: str
 
 class ChatbotContextItem(BaseModel):
     Q: str
     A: str
 
-class Output(BaseModel):
+class JournalEntryResponse(BaseModel):
     overall_risk_level: str
     action_required: str
     confidence_score: Decimal
@@ -150,14 +162,11 @@ class Output(BaseModel):
 
 ####################################################
 ####CREATE JOURNAL ENTRY ENDPOINT###################
-@app.post("/journal-entry", response_model=Output)
-def create_journal_entry(entry: Input):
+@app.post("/journal-entry", response_model=JournalEntryResponse)
+def create_journal_entry(entry: JournalEntry):
     analysis = analyze_journal_entry(entry)
 
     item = {
-        "user_id": FIXED_USER_ID,
-        "entry_id": str(uuid4()),
-        "timestamp_utc": datetime.datetime.utcnow().isoformat(),
         "text": entry.text,
         "overall_risk_level": analysis["overall_risk_level"],
         "action_required": analysis["action_required"],
@@ -171,9 +180,9 @@ def create_journal_entry(entry: Input):
         "chatbot_context": analysis["chatbot_context"]
     }
 
-    dynamo_table.put_item(Item=item)
+    save_journal_entry(item)
 
-    return Output(
+    return JournalEntryResponse(
         overall_risk_level=str(analysis["overall_risk_level"]),
         action_required=analysis["action_required"],
         confidence_score=Decimal(str(analysis["confidence_score"])) if analysis["confidence_score"] is not None else None,
@@ -186,3 +195,63 @@ def create_journal_entry(entry: Input):
         chatbot_context=[ChatbotContextItem(**ctx) for ctx in analysis["chatbot_context"]]
     )
 ##########################################################################
+
+##GET JOURNAL BY DATE########################################
+@app.get("/journal-entry/by-date", response_model=JournalEntryResponse)
+def get_journal_entry_by_date(date: str):
+    try:
+        response = dynamo_table.query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key('user_id').eq(FIXED_USER_ID) & 
+                                   boto3.dynamodb.conditions.Key('timestamp_utc').begins_with(date)
+        )
+        items = response.get('Items', [])
+        if not items:
+            return {"message": "No journal entries found for the specified date."}
+        
+        latest_entry = max(items, key=lambda x: x['timestamp_utc'])
+
+        return JournalEntryResponse(
+            overall_risk_level=latest_entry["overall_risk_level"],
+            action_required=latest_entry["action_required"],
+            confidence_score=latest_entry["confidence_score"],
+            self_harm_flag=latest_entry["self_harm_flag"],
+            violence_flag=latest_entry["violence_flag"],
+            essence_theme=latest_entry["essence_theme"],
+            identified_strengths=latest_entry["identified_strengths"],
+            reappraisal_message=latest_entry["reappraisal_message"],
+            coping_suggestions=latest_entry["coping_suggestions"],
+            chatbot_context=[ChatbotContextItem(**ctx) for ctx in latest_entry["chatbot_context"]]
+        )
+    except Exception as e:
+        return {"message": "Error retrieving journal entry: " + str(e)}
+#####################################################
+
+#GET ALL JOURNALS####################################
+@app.get("/journal-entries", response_model=List[JournalEntryResponse])
+def get_all_journal_entries():
+    try:
+        response = dynamo_table.query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key('user_id').eq(FIXED_USER_ID)
+        )
+        items = response.get('Items', [])
+        
+        journal_entries = []
+        for item in items:
+            journal_entries.append(
+                JournalEntryResponse(
+                    overall_risk_level=item["overall_risk_level"],
+                    action_required=item["action_required"],
+                    confidence_score=item["confidence_score"],
+                    self_harm_flag=item["self_harm_flag"],
+                    violence_flag=item["violence_flag"],
+                    essence_theme=item["essence_theme"],
+                    identified_strengths=item["identified_strengths"],
+                    reappraisal_message=item["reappraisal_message"],
+                    coping_suggestions=item["coping_suggestions"],
+                    chatbot_context=[ChatbotContextItem(**ctx) for ctx in item["chatbot_context"]]
+                )
+            )
+        return journal_entries
+    except Exception as e:
+        return {"message": "Error retrieving journal entries: " + str(e)}
+############################################################
