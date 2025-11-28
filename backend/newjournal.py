@@ -52,20 +52,26 @@ dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 dynamo_table = dynamodb.Table(DYNAMO_TABLE)
 ####################################################
 
-#Prompt#############################################
-prompt = f"""You are 'Moodmate-AI,' a compassionate and professional therapeutic assistant specializing in cognitive reappraisal. Your task is to analyze a user's journal entry, strictly adhere to therapeutic principles, and output a structured JSON object.
+######ANALYZE JOURNAL ENTRY FUNCTION####################
+def analyze_journal_entry(entry):
+    try:
+        history_data = analyze_last_five_entries()
+        prompt = f"""You are the 'Moodmate Unified Agent.' Your task is two-fold:
+        1.  **Safety Check:** Analyze the user's current entry for psychological risk.
+        2.  **Therapeutic Analysis:** Analyze the current entry and synthesize a **Pattern Analysis** using the provided historical context.
 
         **CRITICAL RULES:**
-        1.  **Strict Output Format:** You MUST output only a single, valid JSON object. Do not include any introductory text, markdown (like "```json"), or external commentary.
-        2.  **Therapeutic Tone:** Maintain a warm, supportive, non-judgmental, and empowering tone in all generated text fields.
-        3.  **Reframing:** The 'reappraisal_message' must neutralize negative intensity by providing a constructive, distanced, or solution-oriented perspective.
-        4.  **Coping:** The 'coping_suggestions' must be a list of 2-3 simple, actionable, and healthy steps relevant to the user's specific challenge (e.g., technical problem, stress management).
-        5.  **RAG Context:** The 'chatbot_context' Q&A pairs must be specific, directly referencing the journal entry to create high-quality memory for the subsequent chatbot interaction.
+        1.  **Strict Output Format:** You MUST output ONLY a single, valid JSON object. Do not include any introductory text, commentary, or markdown fences.
+        2.  **Action Determination:** Set 'action_required' to "BLOCK" if 'self_harm_flag' or 'violence_flag' is 'Yes'. Otherwise, set it to "PASS".
+        3.  **Pattern Synthesis:** Use the 'HISTORICAL DATA' provided below to identify one specific recurring trigger or theme.
 
-        ** INPUT: **
-        {{entry.text}}
+        ** INPUT (Current Journal Entry): **
+        {entry}
 
-        **JSON SCHEMA:**
+        ** HISTORICAL DATA (Last 5 Entries): **
+        {history_data}
+
+        **UNIFIED JSON SCHEMA:**
         {{
         "overall_risk_level": "[HIGH, MEDIUM, or LOW, based on safety check]",
         "action_required": "[PASS or BLOCK, based on safety check]",
@@ -73,29 +79,26 @@ prompt = f"""You are 'Moodmate-AI,' a compassionate and professional therapeutic
         "self_harm_flag": "[Yes or No]",
         "violence_flag": "[Yes or No]",
         "safety_comment": "[Brief reason for the overall risk level.]",
-        
-        "essence_theme": "[A single sentence summarizing the core emotional theme or challenge.]",
+
+        "historical_pattern": "[A sentence summarizing the recurring emotional or behavioral pattern identified from the HISTORICAL DATA, e.g., 'Anxiety consistently peaks on Sundays.' If no history is available, state 'No clear pattern detected.']",
+
+        "essence_theme": "[A single sentence summarizing the core emotional theme of the CURRENT entry.]",
         "identified_strengths": [
-            "[Identify one specific positive coping mechanism or inner strength the user demonstrated, even unintentionally.]",
-            "[Identify a second strength, focusing on positive traits like self-awareness or perseverance.]"
+            "[Identify one specific positive coping mechanism or inner strength.]",
+            "[Identify a second strength.]"
         ],
-        "reappraisal_message": "[A supportive paragraph (3-4 sentences) that reframes the main negative event or feeling into a positive lesson, a manageable challenge, or a temporary state. This is the 'neutralizing' message.]",
+        "reappraisal_message": "[A supportive paragraph (max 3 sentences) that reframes the main negative event.]",
         "coping_suggestions": [
             "[Actionable suggestion 1, specific to the entry.]",
             "[Actionable suggestion 2, specific to the entry.]",
             "[Actionable suggestion 3, specific to the entry.]"
         ],
         "chatbot_context": [
-            {{"Q": "[A specific question a future chatbot might ask based on the entry.]", "A": "[A concise answer derived directly from the journal entry.]"}},
+            {{"Q": "[A specific question a future chatbot might ask.]", "A": "[A concise answer derived from the CURRENT entry.]"}},
             {{"Q": "[A second specific question.]", "A": "[A concise answer.]"}}
         ]
         }}
         """
-##################################################
-
-######ANALYZE JOURNAL ENTRY FUNCTION####################
-def analyze_journal_entry(entry):
-    try:
         response = reframing_model.generate(prompt)
         result = response["results"][0]["generated_text"]
 
@@ -139,9 +142,38 @@ def save_journal_entry(item: dict):
         print("Error saving journal entry:", e)
 ###################################################
 
+###############ANALYZE LAST 5 ENTRIES###################
+def analyze_last_five_entries():
+    try:
+        response = dynamo_table.query(
+            KeyConditionExpression = boto3.dynamodb.conditions.Key('user_id').eq(FIXED_USER_ID),
+            ScanIndexForward = False,
+            Limit = 5
+        )
+        items = response.get('Items', [])
+        
+        formatted_entries = []
+        for item in items:
+            formatted_entries.append(
+                f"""
+                    Theme: {item['essence_theme']},
+                    Action Taken: {item['action_required']},
+                    Coping Suggestions: {', '.join(item['coping_suggestions'])}
+                """
+            )
+
+        if not formatted_entries:
+            return("No journal entries found for analysis.")
+
+        return "\n--- ---\n".join(formatted_entries)
+    except Exception as e:
+        print("Error retrieving journal entries:", e)
+########################################################
+
 #Base Models#######################################
 class JournalEntry(BaseModel):
     text: str
+    entry_date: datetime.date
 
 class ChatbotContextItem(BaseModel):
     Q: str
@@ -160,14 +192,16 @@ class JournalEntryResponse(BaseModel):
     chatbot_context: List[ChatbotContextItem]
 ###################################################
 
-####################################################
+#######################ENDPOINTS###########################
+#.........................................................#
 ####CREATE JOURNAL ENTRY ENDPOINT###################
 @app.post("/journal-entry", response_model=JournalEntryResponse)
 def create_journal_entry(entry: JournalEntry):
-    analysis = analyze_journal_entry(entry)
+    analysis = analyze_journal_entry(entry.text)
 
     item = {
         "text": entry.text,
+        "date": entry.entry_date.isoformat(),
         "overall_risk_level": analysis["overall_risk_level"],
         "action_required": analysis["action_required"],
         "confidence_score": Decimal(str(analysis["confidence_score"])) if analysis["confidence_score"] is not None else None,
