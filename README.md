@@ -23,7 +23,7 @@
 | Agentic Chatbot | Smart Journaling |
 |:---:|:---:|
 | <img src="Moodmate%20pics/ChatBot.png" width="400"> | <img src="Moodmate%20pics/Journal.png" width="400"> |
-| **Context-Aware Conversations** | **Sentiment Analysis & Scoring** |
+| **Context-Aware Conversations** | **1.Pattern 2.Strength 3.Reframe 4.Action** |
 
 | Habit Builder | Tweet Risk Analyzer |
 |:---:|:---:|
