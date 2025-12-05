@@ -149,6 +149,31 @@ function ChatInterface() {
     setLoading(false);
   };
 
+  // --- new resetMemory function ---
+  const resetMemory = async () => {
+    // call backend reset endpoint and clear local messages/UI
+    const resetUrl = API_URL.replace("/chat", "/reset-memory");
+    setLoading(true);
+    try {
+      const res = await fetch(resetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // body: JSON.stringify({ user_id: "demo_user" }) // optional
+      });
+      if (!res.ok) throw new Error("Reset failed");
+      // clear chat UI and cancel any speech
+      setMessages([]);
+      speechSynthesis && speechSynthesis.cancel();
+      // clear any local cached summary if you use it
+      try { localStorage.removeItem("chat_memory_summary"); } catch {}
+      console.log("🧠 Chat memory reset (frontend + backend).");
+    } catch (err) {
+      console.error("Failed to reset memory:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -279,6 +304,16 @@ function ChatInterface() {
             </option>
           ))}
         </select>
+
+        <button
+          type="button"
+          onClick={resetMemory}
+          className="ml-3 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm"
+          title="Clear chat and reset memory"
+          disabled={loading}
+        >
+          🗑️ Clear
+        </button>
       </div>
 
       <form

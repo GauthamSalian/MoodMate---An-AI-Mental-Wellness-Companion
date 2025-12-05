@@ -117,3 +117,12 @@ async def chat(message: Message, request: Request):
         return {
             "response": "🚨 Connection error. You're not alone—I’m still right here. Let’s take it slow. Want a grounding tip?"
         }
+
+#########################################################
+# Endpoint to reset chat memory (for testing purposes)
+#########################################################
+@router.post("/reset-memory")
+async def reset_memory():
+    global chat_memory
+    chat_memory = ""
+    print("🧠 Chat memory reset.")
