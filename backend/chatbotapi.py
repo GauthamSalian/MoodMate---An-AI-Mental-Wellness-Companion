@@ -84,16 +84,6 @@ async def chat(message: Message, request: Request):
                 json={"past_info": past_info, "user_input": user_input, "chat_memory": chat_memory}, 
                 timeout=90.0  # Generous timeout for RAG + Generation
             )
-            
-            # Fallback: If /query fails with 404, try /chat (older server versions)
-            if response.status_code == 404:
-                print("⚠️ /query not found, trying /chat endpoint...")
-                target_url = f"{COLAB_NGROK_URL}/chat"
-                response = await client.post(
-                    target_url, 
-                    json={"past_info": past_info, "user_input": user_input, "chat_memory": chat_memory}, # Note: /chat usually expects 'question', not 'query'
-                    timeout=90.0
-                )
 
             if response.status_code != 200:
                 print(f"❌ RAG Server Error ({response.status_code}):", response.text)
@@ -110,23 +100,7 @@ async def chat(message: Message, request: Request):
                 return {"response": raw_text or "🤖 No response from RAG server."}
 
             # Extract likely reply field
-            reply_field = data.get("answer") if isinstance(data, dict) else None
-            if not reply_field and isinstance(data, dict):
-                reply_field = data.get("response") or data
-            if reply_field is None:
-                reply_field = data
-
-            # Normalize to dict
-            if isinstance(reply_field, dict):
-                reply_obj = reply_field
-            elif isinstance(reply_field, str):
-                try:
-                    parsed = json.loads(reply_field)
-                    reply_obj = parsed if isinstance(parsed, dict) else {"response": str(parsed)}
-                except Exception:
-                    reply_obj = {"response": reply_field}
-            else:
-                reply_obj = {"response": str(reply_field)}
+            reply_obj = data.get("answer")    
 
             # Update chat memory only when present and valid
             new_chat_memory = reply_obj.get("chat_memory")
